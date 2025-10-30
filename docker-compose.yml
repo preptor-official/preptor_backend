@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for local development
+  postgres:
+    image: postgres:16-alpine
+    container_name: preptor_postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: preptor
+      POSTGRES_PASSWORD: preptor_dev_password
+      POSTGRES_DB: preptorai_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U preptor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: preptor_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://preptor:preptor_dev_password@postgres:5432/preptorai_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount source code for hot reload in development
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    command: sh -c "npx prisma generate && npx nodemon src/server.js"
+
+volumes:
+  postgres_data:
+    driver: local
