@@ -1,18 +1,17 @@
 /**
  * Password Hashing Utility
- * Uses Argon2id algorithm for secure password hashing
+ * Uses bcrypt algorithm for secure password hashing
  *
  * Security Parameters (2025 Standards):
- * - Algorithm: Argon2id (hybrid of Argon2i and Argon2d)
- * - Time Cost: 3 iterations
- * - Memory Cost: 64 MiB (65536 KiB)
- * - Parallelism: 1 thread
+ * - Algorithm: bcrypt
+ * - Salt Rounds: 12 (provides strong security with acceptable performance)
+ * - Note: Switched from argon2 due to Windows ARM64 compatibility
  */
 
-const argon2 = require('argon2');
+const bcrypt = require('bcrypt');
 
 /**
- * Hash a plain text password using Argon2id
+ * Hash a plain text password using bcrypt
  * @param {string} password - Plain text password to hash
  * @returns {Promise<string>} Hashed password string
  * @throws {Error} If hashing fails
@@ -27,13 +26,8 @@ async function hashPassword(password) {
   }
 
   try {
-    const hash = await argon2.hash(password, {
-      type: argon2.argon2id,
-      timeCost: 3,
-      memoryCost: 65536, // 64 MiB
-      parallelism: 1,
-    });
-
+    const saltRounds = 12;
+    const hash = await bcrypt.hash(password, saltRounds);
     return hash;
   } catch (error) {
     console.error('Password hashing error:', error);
@@ -58,7 +52,7 @@ async function verifyPassword(hash, password) {
   }
 
   try {
-    const isValid = await argon2.verify(hash, password);
+    const isValid = await bcrypt.compare(password, hash);
     return isValid;
   } catch (error) {
     console.error('Password verification error:', error);
