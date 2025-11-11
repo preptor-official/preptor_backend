@@ -1,14 +1,3 @@
-// ============================================================================
-// PREPTOR - UPSC Exam Preparation Platform
-// Authentication & Authorization Schema (MVP)
-// ============================================================================
-// Database: PostgreSQL (Single Schema - Default 'public')
-// ORM: Prisma
-// Security: Argon2id password hashing, JWT with refresh tokens
-// Multi-tenancy: Shared database with org_id isolation
-// Note: Multi-schema separation can be added later for tests/content/learning
-// ============================================================================
-
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
@@ -19,75 +8,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// ENUMS
-// ============================================================================
-
-/// User roles for role-based access control (RBAC)
 enum UserType {
-  STUDENT      // Takes tests, views analytics, can be assigned to mentor/institute
-  MENTOR       // Manages assigned students, reviews performance
-  INSTITUTE    // Coaching center admin, manages mentors and students
-  ADMIN        // Platform admin, manages content and users
-  SUPER_ADMIN  // Full system access
+  STUDENT
+  MENTOR
+  INSTITUTE
+  ADMIN
+  SUPER_ADMIN
 
   @@map("user_type")
 }
 
-/// Token types for unified verification flow
 enum TokenType {
-  PASSWORD_RESET      // Temporary token for password recovery
-  EMAIL_VERIFICATION  // Token for email verification on signup
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
 
   @@map("token_type")
 }
 
-// ============================================================================
-// AUTH SCHEMA - Core Authentication Models
-// ============================================================================
-
-/// Core user identity and authentication credentials
-/// This table stores login credentials and user role information
-/// SECURITY: Never return password_hash in API responses
 model User {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email     String   @unique @db.VarChar(255)
-
-  /// Argon2id hashed password - NEVER store plain text
-  /// Use time_cost=3, memory_cost=65536 for hashing
-  passwordHash String @map("password_hash") @db.VarChar(255)
-
-  userType  UserType @map("user_type")
-
-  /// Organization/Institute reference for multi-tenant isolation
-  /// NULL = independent user (B2C)
-  /// NOT NULL = belongs to institute (B2B)
-  /// FK to organizations table in public schema (to be created)
-  orgId     String?  @map("org_id") @db.Uuid
-
-  /// Account status - use soft delete (set to false instead of DELETE)
-  isActive  Boolean  @default(true) @map("is_active")
-
-  /// Email verification status - required before accessing core features
-  emailVerified Boolean @default(false) @map("email_verified")
-
-  /// Failed login attempt counter for account lockout
-  /// Reset to 0 on successful login
-  /// Lock account when >= 5
-  failedLoginAttempts Int @default(0) @map("failed_login_attempts")
-
-  /// Account lockout timestamp
-  /// If set and > NOW(), account is locked
-  /// Lock duration: 15 minutes after 5 failed attempts
-  lockedUntil DateTime? @map("locked_until") @db.Timestamptz
-
-  /// Timestamps for audit and analytics
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz
-
-  // Relations
-  refreshTokens RefreshToken[]
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email               String        @unique @db.VarChar(255)
+  passwordHash        String        @map("password_hash") @db.VarChar(255)
+  userType            UserType      @map("user_type")
+  orgId               String?       @map("org_id") @db.Uuid
+  isActive            Boolean       @default(true) @map("is_active")
+  emailVerified       Boolean       @default(false) @map("email_verified")
+  failedLoginAttempts Int           @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?     @map("locked_until") @db.Timestamptz
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt         DateTime?     @map("last_login_at") @db.Timestamptz
+  refreshTokens       RefreshToken[]
 
   @@index([email], name: "idx_users_email")
   @@index([orgId], name: "idx_users_org_id")
@@ -95,72 +46,30 @@ model User {
   @@map("users")
 }
 
-/// JWT refresh tokens for secure session management
-/// Enables long-lived sessions without storing JWT in localStorage
-/// Supports token rotation, device tracking, and session invalidation
 model RefreshToken {
-  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId   String   @map("user_id") @db.Uuid
-
-  /// SHA-256 hashed refresh token - NEVER store plain token
-  /// Use SHA-256 (not Argon2) for performance - needs to be fast
-  tokenHash String  @map("token_hash") @db.VarChar(255)
-
-  /// Token expiry time (typically 7-30 days)
-  /// Valid tokens: WHERE expires_at > NOW() AND revoked_at IS NULL
-  expiresAt DateTime @map("expires_at") @db.Timestamptz
-
-  /// User-Agent string for device tracking and security monitoring
-  deviceInfo String? @map("device_info") @db.Text
-
-  /// IP address for security monitoring and fraud detection
-  ipAddress  String? @map("ip_address") @db.VarChar(45)
-
-  /// Timestamps
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash") @db.VarChar(255)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  deviceInfo String?   @map("device_info") @db.Text
+  ipAddress  String?   @map("ip_address") @db.VarChar(45)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
-  /// When token was last used to refresh access token
-  /// Useful for analytics and detecting token theft
   lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
-
-  /// Token revocation timestamp - if set, token is invalidated
-  /// Use for logout, logout all devices, or security breach response
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], name: "idx_refresh_tokens_user_id")
   @@index([expiresAt], name: "idx_refresh_tokens_expires_at")
   @@map("refresh_tokens")
 }
 
-/// Unified verification tokens for password reset and email verification
-/// Provides secure, time-limited tokens for both authentication flows
-/// SECURITY: Prevents brute force attacks with expiry and rate limiting
 model VerificationToken {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-
-  /// Token type discriminator
   tokenType TokenType @map("token_type")
-
-  /// Email address - NOT a foreign key to prevent user enumeration attacks
-  /// Can be non-existent email (security best practice)
   email     String    @db.VarChar(255)
-
-  /// Cryptographically secure random token (32+ bytes, URL-safe)
-  /// Generated using crypto.randomBytes(32).toString('base64url')
   token     String    @unique @db.VarChar(255)
-
-  /// Token expiry time
-  /// Password reset: 15 minutes (security)
-  /// Email verification: 24 hours (UX)
   expiresAt DateTime  @map("expires_at") @db.Timestamptz
-
-  /// When token was successfully used - prevents reuse attacks
-  /// Don't DELETE after use - keep for audit trail
   usedAt    DateTime? @map("used_at") @db.Timestamptz
-
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([email], name: "idx_verification_tokens_email")
@@ -169,110 +78,3 @@ model VerificationToken {
   @@index([tokenType], name: "idx_verification_tokens_type")
   @@map("verification_tokens")
 }
-
-// ============================================================================
-// DATABASE SETUP NOTES
-// ============================================================================
-//
-// 1. Enable UUID extension (required before migration):
-//    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-//
-// 2. Row-Level Security (RLS) example for multi-tenancy (optional):
-//    ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-//
-//    CREATE POLICY tenant_isolation ON users
-//      FOR SELECT USING (
-//        id = current_setting('app.current_user_id')::uuid OR
-//        org_id = current_setting('app.current_org_id')::uuid
-//      );
-//
-// 3. Cleanup jobs (run via cron/scheduler):
-//    -- Delete expired verification tokens older than 7 days
-//    DELETE FROM verification_tokens
-//    WHERE expires_at < NOW() - INTERVAL '7 days';
-//
-//    -- Delete expired refresh tokens older than 30 days
-//    DELETE FROM refresh_tokens
-//    WHERE expires_at < NOW() - INTERVAL '30 days';
-//
-// 4. Case-insensitive email uniqueness (optional but recommended):
-//    CREATE UNIQUE INDEX idx_users_email_lower
-//    ON users (LOWER(email));
-//
-// ============================================================================
-// BUSINESS RULES & AUTHORIZATION PATTERNS
-// ============================================================================
-//
-// USER AUTHENTICATION:
-// - Login: WHERE email = ? AND is_active = true AND locked_until < NOW()
-// - Increment failed_login_attempts on wrong password
-// - Set locked_until = NOW() + 15 minutes when attempts >= 5
-// - Reset failed_login_attempts = 0 on successful login
-//
-// EMAIL VERIFICATION FLOW:
-// 1. User signs up → Generate EMAIL_VERIFICATION token → Send email
-// 2. User clicks link → Verify token valid (not expired, not used)
-// 3. Mark email_verified = true, set used_at = NOW()
-//
-// PASSWORD RESET FLOW:
-// 1. User requests reset → Generate PASSWORD_RESET token → Send email
-// 2. User clicks link → Verify token valid
-// 3. User sets new password → Hash with Argon2id, update password_hash
-// 4. Mark token used → SET used_at = NOW()
-// 5. Optional: Revoke all refresh tokens for security
-//
-// SESSION MANAGEMENT:
-// - Max 5 concurrent sessions per user (limit refresh tokens)
-// - On login: Generate new refresh token, store SHA-256 hash
-// - On token refresh: Verify hash, generate new access token, update last_used_at
-// - On logout: SET revoked_at = NOW() for specific token
-// - On logout all devices: SET revoked_at = NOW() for all user tokens
-//
-// MULTI-TENANT ISOLATION:
-// - Independent users: WHERE org_id IS NULL
-// - Institute users: WHERE org_id = ?
-// - Student queries: WHERE user_id = ? OR (org_id = ? AND mentor_id = ?)
-// - Mentor queries: WHERE org_id = ? AND mentor_id = ?
-// - Institute admin: WHERE org_id = ?
-// - Super admin: No WHERE clause (see all data)
-//
-// RATE LIMITING:
-// - Password reset: Max 3 requests per email per hour
-// - Email verification: Max 5 requests per email per hour
-// - Failed logins: Max 5 attempts per 15 minutes (then lock)
-//
-// ============================================================================
-// SECURITY CHECKLIST (2025 Standards)
-// ============================================================================
-//
-// ✅ Password Hashing: Argon2id (time_cost=3, memory_cost=65536)
-// ✅ Token Storage: Only hashes stored, never plain tokens
-// ✅ JWT Strategy: Short access tokens (15 min) + long refresh tokens (30 days)
-// ✅ Account Lockout: 5 failed attempts → 15 min lock
-// ✅ Email Verification: Required before core feature access
-// ✅ Audit Logging: Track last_login_at, device_info, ip_address, last_used_at
-// ✅ Token Expiry: 15 min for password reset, 24 hr for email verification
-// ✅ Single-use Tokens: used_at prevents replay attacks
-// ✅ User Enumeration Prevention: Email in verification_tokens not FK
-// ✅ Soft Delete: is_active flag instead of hard DELETE
-// ✅ HTTPS Only: All auth endpoints require SSL/TLS
-// ✅ CORS: Strict origin whitelist
-// ✅ Rate Limiting: Implemented at application layer
-//
-// ============================================================================
-// MIGRATION COMMANDS
-// ============================================================================
-//
-// 1. Generate migration:
-//    npx prisma migrate dev --name init_auth_schema
-//
-// 2. Apply to production:
-//    npx prisma migrate deploy
-//
-// 3. Generate Prisma Client:
-//    npx prisma generate
-//
-// 4. View database in Prisma Studio:
-//    npx prisma studio
-//
-// ============================================================================

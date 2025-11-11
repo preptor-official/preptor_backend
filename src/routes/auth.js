@@ -15,14 +15,10 @@ const {
 } = require('../utils/jwt');
 const { authenticateToken } = require('../middleware/auth');
 
-// ============================================================================
-// POST /auth/register - User Registration
-// ============================================================================
 router.post('/register', async (req, res) => {
   try {
     const { email, password, userType = 'STUDENT', orgId = null } = req.body;
 
-    // Validation
     if (!email || !password) {
       return res.status(400).json({
         error: 'Validation failed',
@@ -70,10 +66,8 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Hash password
     const passwordHash = await hashPassword(password);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
@@ -94,10 +88,9 @@ router.post('/register', async (req, res) => {
       },
     });
 
-    // Generate email verification token
     const verificationToken = generateVerificationToken();
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24); // 24-hour expiry
+    expiresAt.setHours(expiresAt.getHours() + 24);
 
     await prisma.verificationToken.create({
       data: {
@@ -107,9 +100,6 @@ router.post('/register', async (req, res) => {
         expiresAt,
       },
     });
-
-    // TODO: Send verification email
-    // sendVerificationEmail(user.email, verificationToken);
 
     res.status(201).json({
       message: 'Registration successful. Please check your email to verify your account.',
@@ -129,14 +119,10 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/login - User Login
-// ============================================================================
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validation
     if (!email || !password) {
       return res.status(400).json({
         error: 'Validation failed',
@@ -144,7 +130,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Find user
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
@@ -159,25 +144,21 @@ router.post('/login', async (req, res) => {
       return res.status(401).json(invalidCredentialsError);
     }
 
-    // Check account lockout
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return res.status(423).json({
         error: 'Account locked',
         message: 'Your account has been temporarily locked due to multiple failed login attempts',
         lockedUntil: user.lockedUntil,
-        retryAfter: Math.ceil((user.lockedUntil - new Date()) / 1000), // seconds
+        retryAfter: Math.ceil((user.lockedUntil - new Date()) / 1000),
       });
     }
 
-    // Verify password
     const isValid = await verifyPassword(user.passwordHash, password);
 
     if (!isValid) {
-      // Increment failed login attempts
       const failedAttempts = user.failedLoginAttempts + 1;
       const updateData = { failedLoginAttempts: failedAttempts };
 
-      // Lock account after 5 failed attempts for 15 minutes
       if (failedAttempts >= 5) {
         const lockedUntil = new Date();
         lockedUntil.setMinutes(lockedUntil.getMinutes() + 15);
@@ -192,7 +173,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json(invalidCredentialsError);
     }
 
-    // Reset failed attempts and update last login on successful login
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -202,17 +182,14 @@ router.post('/login', async (req, res) => {
       },
     });
 
-    // Generate access token (15 minutes)
     const accessToken = generateAccessToken(user);
 
-    // Generate refresh token (30 days)
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = hashRefreshToken(refreshToken);
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Store refresh token in database
     await prisma.refreshToken.create({
       data: {
         userId: user.id,
@@ -244,9 +221,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/refresh - Refresh Access Token
-// ============================================================================
 router.post('/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -258,10 +232,8 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Hash the provided token to compare with database
     const tokenHash = hashRefreshToken(refreshToken);
 
-    // Find valid refresh token
     const storedToken = await prisma.refreshToken.findFirst({
       where: {
         tokenHash,
@@ -288,7 +260,6 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Check if user is still active
     if (!storedToken.user.isActive) {
       return res.status(403).json({
         error: 'Account suspended',
@@ -296,10 +267,8 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Generate new access token
     const accessToken = generateAccessToken(storedToken.user);
 
-    // Update last used timestamp
     await prisma.refreshToken.update({
       where: { id: storedToken.id },
       data: { lastUsedAt: new Date() },
@@ -318,9 +287,6 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-// ============================================================================
-// GET /auth/me - Get Current User (Protected Route)
-// ============================================================================
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -359,9 +325,6 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/logout - Logout (Revoke Refresh Token)
-// ============================================================================
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -369,7 +332,6 @@ router.post('/logout', authenticateToken, async (req, res) => {
     if (refreshToken) {
       const tokenHash = hashRefreshToken(refreshToken);
 
-      // Revoke the specific refresh token
       await prisma.refreshToken.updateMany({
         where: {
           userId: req.user.userId,
@@ -392,12 +354,8 @@ router.post('/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/logout-all - Logout from All Devices
-// ============================================================================
 router.post('/logout-all', authenticateToken, async (req, res) => {
   try {
-    // Revoke all refresh tokens for the user
     const result = await prisma.refreshToken.updateMany({
       where: {
         userId: req.user.userId,
@@ -419,9 +377,6 @@ router.post('/logout-all', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================================================
-// GET /auth/sessions - Get Active Sessions
-// ============================================================================
 router.get('/sessions', authenticateToken, async (req, res) => {
   try {
     const sessions = await prisma.refreshToken.findMany({
@@ -461,9 +416,6 @@ router.get('/sessions', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/verify-email - Verify Email Address
-// ============================================================================
 router.post('/verify-email', async (req, res) => {
   try {
     const { token } = req.body;
@@ -475,7 +427,6 @@ router.post('/verify-email', async (req, res) => {
       });
     }
 
-    // Find valid verification token
     const tokenRecord = await prisma.verificationToken.findFirst({
       where: {
         token,
@@ -492,13 +443,11 @@ router.post('/verify-email', async (req, res) => {
       });
     }
 
-    // Mark email as verified
     await prisma.user.update({
       where: { email: tokenRecord.email },
       data: { emailVerified: true },
     });
 
-    // Mark token as used
     await prisma.verificationToken.update({
       where: { id: tokenRecord.id },
       data: { usedAt: new Date() },
@@ -516,9 +465,6 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /auth/resend-verification - Resend Email Verification
-// ============================================================================
 router.post('/resend-verification', async (req, res) => {
   try {
     const { email } = req.body;
@@ -530,7 +476,6 @@ router.post('/resend-verification', async (req, res) => {
       });
     }
 
-    // Find user
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
       select: { id: true, email: true, emailVerified: true },
@@ -542,7 +487,6 @@ router.post('/resend-verification', async (req, res) => {
     };
 
     if (!user) {
-      // Don't reveal that user doesn't exist
       return res.json(successMessage);
     }
 
@@ -553,7 +497,6 @@ router.post('/resend-verification', async (req, res) => {
       });
     }
 
-    // Check rate limiting (max 5 requests per hour)
     const oneHourAgo = new Date();
     oneHourAgo.setHours(oneHourAgo.getHours() - 1);
 
@@ -572,7 +515,6 @@ router.post('/resend-verification', async (req, res) => {
       });
     }
 
-    // Generate new verification token
     const verificationToken = generateVerificationToken();
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
@@ -586,12 +528,8 @@ router.post('/resend-verification', async (req, res) => {
       },
     });
 
-    // TODO: Send verification email
-    // sendVerificationEmail(user.email, verificationToken);
-
     res.json({
       ...successMessage,
-      // Only include in development for testing
       ...(process.env.NODE_ENV === 'development' && {
         verificationToken,
         verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`,

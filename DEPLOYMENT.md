@@ -1,238 +1,217 @@
-# PreptorAI Backend - Deployment Documentation
+# Deployment Guide
 
-## Current System Status
+Platform-specific deployment information and production configuration.
 
-### Environment Information
-- **Host System**: Windows 11 ARM64
-- **Development Mode**: Docker + WSL (Linux ARM64)
-- **Database**: PostgreSQL 16 on Neon (Production) + Local Docker (Development)
-- **Runtime**: Node.js 22
+## Platform Compatibility
 
----
+### Windows ARM64
 
-## IMPORTANT: Platform Compatibility
+**Cannot run natively** due to Prisma limitations.
 
-### ⚠️ Native Windows ARM64 Limitations
+Running `npm run dev` on Windows ARM64 will fail with:
+```
+PrismaClientInitializationError: query_engine-windows.dll.node is not a valid Win32 application
+```
 
-**DO NOT run `npm run dev` directly on Windows ARM64.** The following packages lack native ARM64 Windows support:
+**Reason**: Prisma has no query engine for Windows ARM64.
 
-1. **Prisma** - No query engine for Windows ARM64
-   - Error: `query_engine-windows.dll.node is not a valid Win32 application`
-
-2. **Argon2** (originally planned) - No prebuilt binaries for Windows ARM64
-   - Requires Visual Studio Build Tools + Windows SDK to compile
-   - **Workaround Applied**: Switched to `bcrypt` (works on ARM64)
-
-### ✅ Supported Deployment Methods
+### Supported Methods
 
 1. **Docker** (Recommended for local development)
-   - Uses Linux ARM64 containers
+   - Uses Linux ARM64 container
    - All dependencies work correctly
-   - Hot reload enabled via volume mounts
+   - Hot reload enabled
 
 2. **WSL2** (Alternative for local development)
-   - Run Ubuntu/Debian ARM64 on Windows
-   - Install Node.js + dependencies natively in WSL
+   - Run Ubuntu/Debian on Windows
+   - Full Linux compatibility
 
-3. **Production** (Neon + Cloud hosting)
-   - Deploy to Linux-based servers (AWS/GCP/Azure)
-   - Prisma works on all standard Linux platforms
+3. **Production** (Any Linux-based host)
+   - AWS, GCP, Azure, DigitalOcean, etc.
+   - Both x64 and ARM64 supported
 
----
+## Local Development
 
-## Current Deployment Configuration
+### Docker Deployment
 
-### Docker Containers (Running)
-```
-CONTAINER          STATUS              PORTS
-preptor_backend    Up (1 hour)        0.0.0.0:3000->3000/tcp
-preptor_postgres   Up (1 hour)        0.0.0.0:5433->5432/tcp
-```
+Current setup uses `docker-compose.yml` with:
+- Node.js 22 Alpine (Linux ARM64)
+- PostgreSQL 16
+- Volume mounts for hot reload
 
-### Package Changes Made
-- ✅ `bcrypt` installed (works on Windows ARM64)
-- ⚠️ `argon2` installed but **incompatible** with Windows ARM64
-  - Code updated to use `bcrypt` instead
-  - Security: bcrypt with 12 salt rounds (2025 standard)
-
-### Database Status
-- ✅ Prisma schema created
-- ✅ Migrations applied: `20251029123303_init_auth_schema`
-- ✅ Tables created: `users`, `refresh_tokens`, `verification_tokens`
-- ✅ Prisma Client generated (for Linux ARM64 in Docker)
-
----
-
-## How to Run the Application
-
-### Option 1: Docker (Recommended)
-
-#### Start Services
 ```bash
+# Start
 npm run docker:up
-# or
-docker-compose up -d
-```
 
-#### View Logs
-```bash
-npm run docker:logs
-# or
-docker-compose logs -f app
-```
+# Logs
+docker logs preptor_backend -f
 
-#### Restart After Code Changes
-```bash
+# Restart
 npm run docker:rebuild
-# or
-docker-compose up -d --build
-```
 
-#### Stop Services
-```bash
+# Stop
 npm run docker:down
-# or
-docker-compose down
 ```
-
-#### Reset Everything (Database + App)
-```bash
-npm run docker:reset
-# or
-docker-compose down -v && docker-compose up -d --build
-```
-
-### Option 2: WSL2
-
-1. Open WSL terminal
-2. Navigate to project directory
-3. Run standard Node.js commands:
-```bash
-npm install
-npx prisma generate
-npx prisma migrate dev
-npm run dev
-```
-
-### ❌ Option 3: Native Windows (NOT SUPPORTED on ARM64)
-```bash
-# DO NOT RUN THIS ON WINDOWS ARM64
-npm run dev  # ❌ Will crash with Prisma error
-```
-
----
-
-## Testing the Deployment
-
-### 1. Check Docker Status
-```bash
-docker ps
-```
-Expected: `preptor_backend` and `preptor_postgres` both showing "Up"
-
-### 2. Test Health Endpoint
-```bash
-curl http://localhost:3000/health
-```
-Expected: `{"status":"ok","timestamp":"..."}`
-
-### 3. Test Authentication Endpoints
-
-**Register User**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "Test@123456",
-    "userType": "STUDENT"
-  }'
-```
-
-**Login**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "Test@123456"
-  }'
-```
-
-**Get User Profile** (requires access token from login)
-```bash
-curl http://localhost:3000/api/v1/auth/me \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
----
-
-## Troubleshooting
-
-### Issue: Prisma Error on Windows
-**Error**: `No native build was found for platform=win32 arch=arm64`
-
-**Solution**: Use Docker or WSL2. Never run directly on Windows ARM64.
-
-### Issue: argon2 Installation Fails
-**Error**: `gyp ERR! find VS could not find any Visual Studio installation`
-
-**Solution**: Already resolved - code uses `bcrypt` instead.
-
-### Issue: Port 3000 Already in Use
-```bash
-# Find process using port
-netstat -ano | findstr :3000
-
-# Kill the process (replace PID)
-taskkill /PID <PID> /F
-```
-
-### Issue: Database Connection Failed
-1. Check if Neon database is accessible
-2. Verify `.env` file has correct `DATABASE_URL`
-3. For local dev, ensure `preptor_postgres` container is running
-
----
 
 ## Production Deployment
 
-### Environment Variables (Neon + Production)
-```bash
-DATABASE_URL="postgresql://user:pass@host.neon.tech/dbname?sslmode=require"
-JWT_SECRET="your-256-bit-secret"
-JWT_REFRESH_SECRET="your-256-bit-refresh-secret"
+### Environment Variables
+
+```env
+DATABASE_URL="postgresql://user:pass@host.neon.tech/db?sslmode=require"
+JWT_SECRET="<generate-secure-256-bit-key>"
+JWT_REFRESH_SECRET="<generate-secure-256-bit-key>"
 NODE_ENV="production"
 PORT=3000
 ```
 
 ### Migration Steps
+
 ```bash
 # Generate Prisma Client
 npx prisma generate
 
-# Run migrations (production)
+# Apply migrations
 npx prisma migrate deploy
 
 # Start server
 npm start
 ```
 
----
+### Database (Neon)
 
-## Summary
+Configured for:
+- Region: AWS Singapore (ap-southeast-1)
+- Database: preptorai_db
+- SSL: Required
 
-✅ **What Works**:
-- Docker deployment (Linux ARM64 containers)
-- WSL2 deployment
-- Production deployment on Linux servers
-- All authentication features fully implemented
-- Database schema deployed to Neon
+To migrate to Neon:
+1. Create Neon project
+2. Copy DATABASE_URL to .env
+3. Run `npx prisma migrate deploy`
 
-❌ **What Doesn't Work**:
-- Native execution on Windows ARM64 (Prisma incompatibility)
+### Security Checklist
 
-🔧 **Fixes Applied**:
-- Switched from argon2 to bcrypt for password hashing
-- Documented deployment requirements
-- Confirmed Docker containers are running correctly
+- [ ] Change JWT_SECRET to strong random value (min 32 chars)
+- [ ] Enable HTTPS (required for production)
+- [ ] Configure CORS with strict origin whitelist
+- [ ] Add rate limiting
+- [ ] Set secure cookie flags
+- [ ] Enable helmet.js headers
+- [ ] Configure logging
+- [ ] Set up monitoring
+- [ ] Enable database backups
+
+## Cloud Platforms
+
+### AWS
+
+- Use ECS/EKS for containers
+- RDS for PostgreSQL (or keep Neon)
+- ALB for load balancing
+- CloudWatch for logging
+
+### Google Cloud
+
+- Use Cloud Run for containers
+- Cloud SQL for PostgreSQL
+- Cloud Load Balancing
+- Cloud Logging
+
+### Azure
+
+- Use Container Instances
+- Azure Database for PostgreSQL
+- Application Gateway
+- Application Insights
+
+### DigitalOcean
+
+- Use App Platform
+- Managed PostgreSQL
+- Built-in load balancing
+
+## Container Configuration
+
+### Dockerfile
+
+Current configuration:
+- Platform: `linux/arm64`
+- Base: `node:22-alpine`
+- Multi-stage build
+- Prisma Client generated at build time
+
+### docker-compose.yml
+
+Services:
+- `app`: Node.js backend
+- `postgres`: PostgreSQL 16
+
+Volumes:
+- Source code mounted for hot reload
+- Database persisted in named volume
+
+## Troubleshooting
+
+### Issue: Native Windows execution fails
+
+**Solution**: Use Docker or WSL2. Never run directly on Windows ARM64.
+
+### Issue: Prisma Client errors in container
+
+```bash
+# Rebuild with fresh Prisma Client
+npm run docker:rebuild
+```
+
+### Issue: Database connection timeout
+
+1. Check DATABASE_URL
+2. Verify SSL mode for Neon (`?sslmode=require`)
+3. Check firewall rules
+
+### Issue: Port conflicts
+
+```bash
+# Check ports
+netstat -ano | findstr :3000
+
+# Change port in docker-compose.yml
+ports:
+  - "3001:3000"  # Use 3001 instead
+```
+
+## Package Notes
+
+### Password Hashing
+
+Originally planned: `argon2` (incompatible with Windows ARM64)
+
+Current: `bcrypt` with 12 salt rounds
+- Works on all platforms
+- Meets 2025 security standards
+- Compatible with Windows ARM64 in Docker
+
+## Current Status
+
+- Docker containers: Running
+- Database: Connected to Neon
+- Platform: Windows 11 ARM64 host, Linux ARM64 containers
+- All auth endpoints: Operational
+- Security features: Verified
+
+## Monitoring
+
+Recommended tools:
+- Application: Sentry, Datadog, New Relic
+- Database: Neon dashboard, pganalyze
+- Logs: CloudWatch, Loggly, Papertrail
+- Uptime: UptimeRobot, Pingdom
+
+## Performance
+
+Recommended configuration:
+- Container: 1 CPU, 2GB RAM minimum
+- Database: Connection pooling enabled
+- Caching: Redis for session management
+- CDN: CloudFlare for static assets

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(test:*)",
+      "Bash(npx prisma --version)",
+      "Bash(cmd /c \"dir %APPDATA%\\Claude 2>&1\")",
+      "Bash(cmd /c \"if exist %APPDATA%\\Claude echo EXISTS || echo NOT_FOUND\")",
+      "Bash(powershell -Command:*)",
+      "Read(//c/Users/abhis/AppData/Roaming/Claude/**)",
+      "Bash(npx:*)",
+      "Bash(docker exec:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -11,21 +11,13 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 
-// Import routes
 const authRoutes = require('./routes/auth');
 
-// Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============================================================================
-// MIDDLEWARE
-// ============================================================================
+app.use(helmet());
 
-// Security middleware
-app.use(helmet()); // Security headers
-
-// CORS configuration
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -35,15 +27,11 @@ app.use(
   })
 );
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
-
-// Compression middleware
 app.use(compression());
 
-// Request logging (development only)
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -51,14 +39,9 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// ============================================================================
-// RATE LIMITING
-// ============================================================================
-
-// Global rate limiter
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: {
     error: 'Too many requests',
     message: 'You have exceeded the rate limit. Please try again later.',
@@ -67,10 +50,9 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Auth endpoints rate limiter (more strict)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit each IP to 20 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: {
     error: 'Too many authentication attempts',
     message: 'You have made too many authentication requests. Please try again later.',
@@ -79,14 +61,8 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Apply global rate limiter
 app.use(globalLimiter);
 
-// ============================================================================
-// ROUTES
-// ============================================================================
-
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
@@ -96,10 +72,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API version 1 routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
 
-// Root endpoint
 app.get('/', (req, res) => {
   res.json({
     message: 'Preptor API Server',
@@ -109,11 +83,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
-
-// 404 Not Found handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -122,11 +91,9 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
 
-  // Prisma errors
   if (err.code && err.code.startsWith('P')) {
     return res.status(400).json({
       error: 'Database error',
@@ -135,7 +102,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // JWT errors
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({
       error: 'Invalid token',
@@ -150,7 +116,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Validation errors
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       error: 'Validation failed',
@@ -159,7 +124,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Default error response
   res.status(err.status || 500).json({
     error: err.name || 'Internal Server Error',
     message: err.message || 'An unexpected error occurred',
@@ -167,21 +131,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ============================================================================
-// SERVER STARTUP
-// ============================================================================
-
-// Graceful shutdown
 const gracefulShutdown = () => {
-  console.log('\nReceived shutdown signal. Closing server gracefully...');
+  console.log('\nShutting down gracefully...');
   server.close(() => {
-    console.log('Server closed. Exiting process.');
+    console.log('Server closed');
     process.exit(0);
   });
 
-  // Force shutdown after 10 seconds
   setTimeout(() => {
-    console.error('Forced shutdown after timeout');
+    console.error('Forced shutdown');
     process.exit(1);
   }, 10000);
 };
@@ -193,8 +151,8 @@ const server = app.listen(PORT, () => {
   console.log('Q           Preptor Backend Server Started              Q');
   console.log('ZPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP]');
   console.log('');
-  console.log(`  ¡ Server:      http://localhost:${PORT}`);
-  console.log(`  =Ê Health:      http://localhost:${PORT}/health`);
+  console.log(`  ï¿½ Server:      http://localhost:${PORT}`);
+  console.log(`  =ï¿½ Health:      http://localhost:${PORT}/health`);
   console.log(`  = Auth API:    http://localhost:${PORT}/api/v1/auth`);
   console.log(`  < Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log('');
